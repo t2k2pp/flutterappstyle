@@ -31,8 +31,8 @@
 
 参照実装: `pricello/lib/core/theme/app_colors.dart`、テーマ切替は `breezy-recipe-stock/lib/core/theme/app_colors.dart`
 
-全アプリで**同じトークン名**を定義する。アクセントの色相はアプリの個性として変えてよいが、
-**明度・彩度の設計（役割ごとのトーン）は揃える**こと。
+全アプリで**同じトークン名**を定義する。配色の実値は §1.2 の共通5配色に統一し、
+アプリの個性は「どれを既定にするか」で出す（**明度・彩度の設計は5配色すべてで共通**）。
 
 | トークン | 役割 | pricello（オレンジ系）の値 | breezy グリーン系の例 |
 |---|---|---|---|
@@ -52,17 +52,47 @@
 - 識別用パレット（商品/タグ = 淡いパステル約9色、店舗等 = アクセント9色）を持ち、
   `palette[seed % length]` で**安定した自動割当**をする（参照: `AppColors.productColor/storeColor`）。
 
-### 1.2 テーマ切替（全アプリ必須。breezy 方式を移植）
+### 1.2 テーマ切替（全アプリ必須）
 
-参照実装: `breezy-recipe-stock/lib/providers/theme_providers.dart`, `app.dart`, `core/theme/app_colors.dart`
+参照実装: `pricello/lib/core/theme/app_colors.dart`, `pricello/lib/providers/providers.dart`（`AppPaletteNotifier`）, `pricello/lib/app.dart`
 
-- 役割トークン一式を `AppPalette`（`id` 付き immutable クラス）にまとめ、複数配色を用意する。
+**共通5配色**を全アプリが同じ定義・同じ並びで持つ。アプリごとに配色を発明しない。
+
+| 配色 | id | bg | ink | ink2 | ink3 | line | accent | accentSoft | accentDeep | chipBg |
+|---|---|---|---|---|---|---|---|---|---|---|
+| オレンジ | `orange` | `#FBF6F1` | `#2B2622` | `#6B6059` | `#A39890` | `#EEE6DC` | `#EC6A3A` | `#FDE9DF` | `#C4481E` | `#F3ECE2` |
+| グリーン | `green` | `#F4FAF6` | `#22423F` | `#5C7370` | `#98ACA8` | `#E2EEE7` | `#2F9E8F` | `#DFF3EE` | `#1E7A6C` | `#EAF3ED` |
+| ブルー | `blue` | `#F3F7FB` | `#24384A` | `#5A6E80` | `#97A9B9` | `#E1EAF2` | `#3E7BC0` | `#E0ECF8` | `#2A5C99` | `#E9F0F7` |
+| パープル | `purple` | `#F8F5FB` | `#3A2E4A` | `#6D6180` | `#A99BB9` | `#ECE4F3` | `#8A63C0` | `#EFE6F8` | `#6A44A0` | `#F0E9F7` |
+| ピンク | `pink` | `#FDF5F8` | `#4A2A38` | `#7C5866` | `#B89AA6` | `#F3E2EA` | `#D86A93` | `#F7E3EC` | `#B84A73` | `#F6E7EE` |
+
+（`card` は全配色 `#FFFFFF`。並びは色相環順: オレンジ→グリーン→ブルー→パープル→ピンク）
+
+**アプリごとの既定配色**（アプリの識別色。初回起動時はこの配色が選択された状態）:
+
+| アプリ | 既定配色 | 備考 |
+|---|---|---|
+| pricello | オレンジ | 従来色 |
+| breezy-recipe-stock | グリーン | 従来色 |
+| stocello | ブルー | 従来のティール（`#0E8C86`）は breezy と被るため移行 |
+| pacello | パープル | 従来のオレンジ（`#EC6A3A`）は pricello と被るため移行 |
+
+- ピンクはどのアプリの既定でもない共通の選択肢。既定配色の変更はアプリの識別に関わるため、先に本書を更新する。
+- 6色目を足す場合はスマホ幅（約360dp）でも色玉＋ラベルが1列に収まるかを確認してから本書に追加する
+  （現状5色が1列の上限。折返し自体は `Wrap` で許容）。
+
+**実装方式**（breezy 発祥・pricello 実装済みの方式）:
+
+- 役割トークン一式を `AppPalette`（`id`/`label` 付き immutable クラス）にまとめる。
 - `AppColors` は `static AppPalette _active` を持ち、各トークンは `static Color get bg => _active.bg;` の getter にする。
+- `paletteById(id)` の `orElse`（未知 id の戻し先）＝**そのアプリの既定配色**とする。
 - Riverpod Notifier が `SharedPreferences`（キー `theme.palette`）へ永続化し、変更時に `AppColors.setActive` を呼ぶ。
 - ルートは `KeyedSubtree(key: ValueKey(palette.id), child: RootShell())` で**配色 id をキーにサブツリーを作り直して**再描画する。
   現在タブは provider に持ち、作り直しでもタブ位置を保つ（`rootTabIndexProvider`）。
-- 設定 > 表示タブに「テーマの色」カードを置き、**色玉（accent の swatch）付き SegmentedButton** で選ぶ。
-- 各アプリ最低2配色（既定＝そのアプリの個性色 ＋ もう1色以上）。明度設計は既定配色と揃える。
+- 設定 > 表示タブの先頭に「テーマの色」カードを置き、**色選択と同じ36px色玉（選択中= ink枠3px＋白チェック。§4.2）を
+  横に並べ、各色玉の下に配色名の caption** を添えて選ぶ。
+  ※ SegmentedButton はセグメント幅の intrinsic 計算に icon スロットや Row 内容が反映されず、
+  CJKラベル＋色玉で見切れ/オーバーフローが発生するため**使わない**（pricello実機で確認済み）。
 
 ### 1.3 タイポグラフィ
 
